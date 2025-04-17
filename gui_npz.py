@@ -16,7 +16,21 @@ import sys
 import json
 from threading import Event
 from queue import Queue
+import colorsys
+import random
+def make_color_label(name, rgb):
+    row = gui.Horiz()
+    
+    color_rect = gui.Rectangle()
+    color_rect.background_color = gui.Color(rgb[0], rgb[1], rgb[2])
+    color_rect.frame = gui.Rect(0, 0, 12, 12)  # must set frame explicitly
 
+    label = gui.Label(name)
+    row.add_child(color_rect)
+    row.add_fixed(6)  # spacing
+    row.add_child(label)
+
+    return row
 
 isMacOS = (platform.system() == "Darwin")
 OUTPUT_JSON = "objects.json"
@@ -53,6 +67,30 @@ INSTANCE_COLORS = {
 28: (255., 204., 153.),
 29: (50., 100., 0.),
 }
+
+        
+def generate_ncolors(num):
+    def get_n_hls_colors(num):
+        hls_colors = []
+        i = 0
+        step = 360.0 / num
+        while i < 360:
+            h = i
+            s = 90 + random.random() * 10
+            l = 50 + random.random() * 10
+            _hlsc = [h / 360.0, l / 100.0, s / 100.0]
+            hls_colors.append(_hlsc)
+            i += step
+        return hls_colors
+    rgb_colors = np.zeros((0,3))
+    if num < 1:
+        return rgb_colors
+    hls_colors = get_n_hls_colors(num)
+    for hlsc in hls_colors:
+        _r, _g, _b = colorsys.hls_to_rgb(hlsc[0], hlsc[1], hlsc[2])
+        r, g, b = [int(x * 255.0) for x in (_r, _g, _b)]
+        rgb_colors = np.concatenate((rgb_colors,np.array([r,g,b])[np.newaxis,:]))
+    return rgb_colors
 
 def load_superquadrics(filename):
     data = np.load(filename)
@@ -609,6 +647,7 @@ class AppWindow:
         h.add_child(gui.Label("Description:"))
         h.add_child(self.textbox)
         h.add_stretch()
+        self.superquadric_colors = generate_ncolors(16) / 255.0
         self.stored_superquadrics.add_child(h)
         if(load):
             sqs = load_superquadrics("cd10e95d1501ed6719fb4103277a6b93_sq.npz")
@@ -616,8 +655,22 @@ class AppWindow:
             for idx, sq in enumerate(sqs):
                 self.sqs.append(sq)
                 em = self.window.theme.font_size
-                sq = gui.CollapsableVert(f"SQ{idx+1}", 0.25 * em,
-                                        gui.Margins(em, 0, 0, 0))
+                color = self.superquadric_colors[idx]
+                print(idx, color)
+                # color_swatch = gui.ColorEdit()
+                # color_swatch.color_value = gui.Color(color[0], color[1], color[2])
+                # color_swatch.enabled = False  # Makes it read-only
+
+                label_text = gui.Label(f"SQ{idx+1}")
+                label_text.text_color=gui.Color(color[0], color[1], color[2])
+                label_row = gui.Horiz()
+                #label_row.add_child(color_swatch)
+                label_row.add_child(label_text)
+
+                sq = gui.CollapsableVert("", 0.25 * em, gui.Margins(em, 0, 0, 0))
+                sq.add_child(label_row)
+                # sq = gui.CollapsableVert(f"SQ{idx+1}", 0.25 * em,
+                #                         gui.Margins(em, 0, 0, 0))
                 grid = gui.VGrid(2, 0.25 * em)
                 grid.add_child(gui.Label("Shape 1"))
                 grid.add_child(self.sqs[-1].e1)
@@ -850,7 +903,7 @@ class AppWindow:
         self._scene.scene.clear_geometry()
         for instance in self.instances_marker:
             self._scene.scene.add_geometry(f"__model_{id(instance)}__", instance, self.settings.material)
-
+        
         for i in range(len(self.sqs)):
             sq = self.sqs[i]
             e1 = sq.e1.double_value
@@ -883,7 +936,8 @@ class AppWindow:
                 mesh.vertices = o3d.utility.Vector3dVector(vertices)
                 mesh.triangles = o3d.utility.Vector3iVector(faces)
                 mesh.compute_vertex_normals()
-                mesh.paint_uniform_color([1, 0.706, 0])
+                mesh.paint_uniform_color(self.superquadric_colors[i-1 % len(self.superquadric_colors)])
+                print(i, self.superquadric_colors[i % len(self.superquadric_colors)])
 
                 self._scene.scene.add_geometry(f"__superquadric__{i}", mesh, self.settings.material)
 
@@ -966,8 +1020,20 @@ class AppWindow:
         self.sqs.append(Superquadric())
         em = self.window.theme.font_size
         idx = len(self.sqs) - 1
-        sq = gui.CollapsableVert(f"SQ{idx+1}", 0.25 * em,
-                                gui.Margins(em, 0, 0, 0))
+        color = self.superquadric_colors[idx]
+        color_rect = gui.Rectangle()
+        color_rect.background_color = gui.Color(color[0], color[1], color[2])
+        color_rect.frame = gui.Rect(0, 0, 20, 20)  # width × height in pixels
+        label_text = gui.Label(f"SQ{idx+1}")
+        label_row = gui.Horiz()
+        label_row.add_child(color_rect)
+        label_row.add_fixed(5)  # spacing
+        label_row.add_child(label_text)
+        sq = gui.CollapsableVert("", 0.25 * em, gui.Margins(em, 0, 0, 0))
+        sq.add_child(label_row)
+
+        # sq = gui.CollapsableVert(f"SQ{idx+1}", 0.25 * em,
+        #                         gui.Margins(em, 0, 0, 0))
         grid = gui.VGrid(2, 0.25 * em)
         grid.add_child(gui.Label("Shape 1"))
         grid.add_child(self.sqs[-1].e1)
